@@ -1,0 +1,19 @@
+# SPM build cache
+.build/
+.swiftpm/
+Package.resolved
+
+# Generated build outputs
+Ben.app/
+AppIcon.iconset/
+
+# macOS
+.DS_Store
+
+# Xcode (in case anyone opens this in Xcode later)
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
