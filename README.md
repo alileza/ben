@@ -1,103 +1,131 @@
 # Ben
 
-A native macOS app for real-time speech translation between English and German.
-Uses Apple's on-device speech recognition (`SFSpeechRecognizer`) and the
-on-device Translation framework. Fully offline once the language packs are
-installed by macOS itself; no Hugging Face, no API keys, no model downloads
-from this app.
+Real-time English ⇄ German speech translation on macOS. Fully on-device —
+no API keys, no model downloads from this app, no network round-trips.
 
-![status](https://img.shields.io/badge/macOS-15%2B-blue) ![swift](https://img.shields.io/badge/swift-6-orange)
+[![build](https://github.com/alileza/ben/actions/workflows/build.yml/badge.svg)](https://github.com/alileza/ben/actions/workflows/build.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![macOS](https://img.shields.io/badge/macOS-15%2B-blue.svg)](https://www.apple.com/macos/)
+[![Swift](https://img.shields.io/badge/Swift-6-orange.svg)](https://www.swift.org/)
 
-## What it does
+> Pipeline: `AVAudioEngine` → `SFSpeechRecognizer` → `Translation` framework.
+> All Apple system frameworks; everything runs locally.
 
-- Captures mic audio, streams it to `SFSpeechRecognizer`.
-- Each finalized utterance is translated by the macOS Translation framework.
-- Two-column UI: source on the left, translation on the right, vertically
-  aligned (one shared scroll view; the active in-progress line pinned at the
-  top under the status bar).
-- One-click direction toggle (`EN ⇄ DE`), input device picker, hardware mic
-  volume slider.
-- Optional diagnostics pane (mic peak + translation latency, 30 s sliding
-  window) and debug log pane, both toggled from the View menu.
+---
 
-## Requirements
-
-- macOS 15 (Sequoia) or later
-- Xcode + Swift toolchain (`swift --version` should report Swift 6.x)
-- **Dictation must be enabled** — System Settings → Keyboard → Dictation. The
-  Apple speech recognizer returns "Siri and Dictation are disabled" otherwise.
-- Optional but useful: download the EN ⇄ DE translation pair when macOS prompts
-  the first time you run it.
-
-## Build & run
+## Quick start
 
 ```bash
-./build.sh                     # → Ben.app
+git clone git@github.com:alileza/ben.git
+cd ben
+./build.sh
 open Ben.app
 ```
 
-On first launch macOS will prompt for **microphone** and **speech recognition**
-permission. Both are required.
+First launch will ask for **Microphone** and **Speech Recognition**
+permission, and (on first use of a language pair) prompt to download the
+on-device translation model.
 
-To regenerate the app icon:
+## Requirements
 
-```bash
-swift make-icon.swift          # → AppIcon.icns + AppIcon.iconset/
-./build.sh                     # rebuilds the bundle with the new icon
+| Requirement | Notes |
+|---|---|
+| macOS 15+ (Sequoia / Tahoe) | The Translation framework needs 15 |
+| Xcode + Swift 6 toolchain | `swift --version` should report 6.x |
+| Dictation enabled | System Settings → Keyboard → Dictation. Without it `SFSpeechRecognizer` errors with "Siri and Dictation are disabled" |
+| EN ⇄ DE translation pair | macOS prompts to download on first use |
+
+## Features
+
+- **Two-column transcript** with a shared scroll — source and translation
+  rows are always vertically aligned. Active in-progress row is pinned at
+  the top under the status bar.
+- **One-click direction toggle** (`EN ⇄ DE`).
+- **Input device picker + hardware mic volume** in a popover next to the
+  start/stop button.
+- **Diagnostics pane**: live mic peak, translation latency chart,
+  30 s sliding window.
+- **Debug log pane**: in-app ring-buffered events, mirrored to `os.log`
+  under subsystem `com.local.ben` so `log stream` works too.
+- **Transcript export** to `.txt` — source only, translation only, or both
+  paired with timestamps.
+- **Smart chunking**: pauses commit a new line; long monologues chunk at
+  word boundaries after 5 s (10 s hard cap).
+- **Canonical translation pairing**: the committed row's source and
+  translation always correspond — no race conditions where the displayed
+  translation lags behind the recognizer's final text.
+
+## Project layout
+
+```
+Sources/Ben/
+├── App.swift                @main entry + View-menu commands
+├── AppState.swift           Observable shared state + translation queue
+├── Models.swift             Direction, PairedRow, MicPoint, LatencyPoint
+├── Audio/
+│   ├── AudioEngine.swift    AVAudioEngine → AsyncStream
+│   └── AudioDevices.swift   CoreAudio HAL enumeration + volume control
+├── Speech/
+│   └── SpeechEngine.swift   SFSpeechRecognizer with stale-callback guard
+├── Export/
+│   └── TranscriptExport.swift  .txt save via NSSavePanel
+├── Logging/
+│   └── DebugLog.swift       Ring buffer + os.log
+└── Views/
+    ├── ContentView.swift    Root composition + engine driver
+    ├── StatusBar.swift      Top bar + pills + popover controls
+    ├── Transcript.swift     Two-column transcript + active row
+    ├── Diagnostics.swift    Mic + latency charts (Swift Charts)
+    └── Debug.swift          Debug log pane
 ```
 
-If Cmd-Tab / Dock still show a stale icon after a rebuild:
+The architecture is documented in [BEST_PRACTICES.md](./BEST_PRACTICES.md).
 
-```bash
-killall Dock Finder
-```
+## Watching debug logs
 
-## Watch debug logs from the terminal
+In-app: **View → Show Debug Logs** (⌥⌘D).
 
-The app writes every event to `os.log` under subsystem `com.local.ben`:
+In a terminal:
 
 ```bash
 log stream --predicate 'subsystem == "com.local.ben"' --style compact
 ```
 
-Same events show inline in the app when you enable **View → Show Debug Logs**
-(⌥⌘D).
+## Build & regenerate the icon
 
-## Project layout
-
-```
-swift/
-├── Package.swift          # SPM manifest (Swift 6, language mode 5)
-├── Info.plist             # bundle config + permission usage strings
-├── build.sh               # compile + bundle + ad-hoc sign
-├── make-icon.swift        # generates AppIcon.icns
-└── Sources/Ben/
-    ├── BenApp.swift           # @main App + menu commands + shared types
-    ├── ContentView.swift      # SwiftUI root + AppState + status bar + panes
-    ├── DiagnosticsPane.swift  # mic-peak / latency charts (30 s sliding)
-    ├── DebugLog.swift         # in-app ring buffer + os.log forwarding
-    ├── AudioEngine.swift      # AVAudioEngine wrapper, AsyncStream output
-    ├── AudioDevices.swift     # CoreAudio HAL enumeration + volume
-    └── SpeechEngine.swift     # SFSpeechRecognizer wrapper
+```bash
+swift make-icon.swift   # writes AppIcon.icns + AppIcon.iconset/
+./build.sh              # rebuilds the bundle with the new icon
 ```
 
-## Known limitations
+If the Dock or Cmd-Tab shows a stale icon after a rebuild:
 
-- Speaker labels stay at `S1`; the app doesn't do diarization.
-- macOS's on-device German speech recognition isn't supported on every Mac.
-  The debug log will show `onDevice=false` if it falls back to the network
-  path (which works while online but isn't truly offline).
-- The Translation framework can refuse to prepare a language pair until you
-  accept the macOS download sheet. The app surfaces this as
-  "translation not available — accept the download prompt".
+```bash
+killall Dock Finder
+```
 
-## Architecture notes
+## Troubleshooting
 
-- No Combine. AsyncStream + `.task(id:)` + structured concurrency throughout.
-- Single shared `AppState` (`@Observable` on `MainActor`) owned at the App level.
-- Engines (`AudioEngine`, `SpeechEngine`) are non-actor classes that publish
-  via AsyncStreams; lifecycle is driven by a single `.task(id:)` on the root
-  view with `withTaskCancellationHandler` for cleanup.
-- Translations re-bind a fresh `AsyncStream` continuation on every
-  `.translationTask` activation — necessary because `AsyncStream` is
-  single-iterator and direction-change cancels the previous task body.
+| Symptom | What to check |
+|---|---|
+| "Siri and Dictation are disabled" in the debug log | Enable Dictation in System Settings → Keyboard |
+| Source pane fills but translation stays empty | Accept the macOS download prompt for the language pair on first use |
+| App in `/Applications` doesn't appear in Spotlight or Alfred | Ad-hoc-signed apps in `/Applications` are filtered by Gatekeeper. Run `sudo spctl --add /Applications/Ben.app` or keep the build under your home dir |
+| Cmd-Tab shows a stale white-square icon | `killall Dock` to bust the icon cache |
+| German is recognized but `onDevice=false` in the log | Your Mac doesn't have on-device German; recognition falls back to the network |
+
+## Limitations
+
+- Speaker labels stay at `S1`; no real diarization.
+- On-device speech availability varies by language and Mac model.
+- Auto-detect (speak either language without flipping the toggle) is on the
+  roadmap, not in the app yet.
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md). PRs and issues welcome — keep them
+small and focused.
+
+## License
+
+MIT. See [LICENSE](./LICENSE).

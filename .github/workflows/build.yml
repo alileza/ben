@@ -1,0 +1,45 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          swift --version
+          xcodebuild -version
+
+      - name: swift build
+        run: swift build -c release
+
+      - name: Assemble app bundle
+        run: ./build.sh
+
+      - name: Verify bundle layout
+        run: |
+          test -f Ben.app/Contents/MacOS/Ben
+          test -f Ben.app/Contents/Info.plist
+          test -f Ben.app/Contents/Resources/AppIcon.icns
+          codesign -dv Ben.app 2>&1 | head -5
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ben-app-${{ github.sha }}
+          path: Ben.app
+          if-no-files-found: error
+          retention-days: 14
