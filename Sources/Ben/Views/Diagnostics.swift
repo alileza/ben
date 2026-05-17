@@ -174,18 +174,37 @@ private struct LatencyChart: View {
     let state: AppState
     private let window: TimeInterval = AppState.diagWindow
 
+    /// Cap the Y axis at the 95th percentile of recent latencies (rounded up
+    /// to the nearest 100 ms, floored at 200 ms). Outliers above this line
+    /// still render but visually pinned at the top — keeps the typical-range
+    /// detail readable instead of being crushed by warmup spikes.
+    private var yMax: Double {
+        let samples = state.latencyPoints.map { Double($0.ms) }.sorted()
+        guard !samples.isEmpty else { return 200 }
+        let idx = max(0, Int(Double(samples.count - 1) * 0.95))
+        let p95 = samples[idx]
+        let rounded = (p95 / 100).rounded(.up) * 100
+        return max(200, rounded)
+    }
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
             Chart(state.latencyPoints) { p in
                 let dt = -ctx.date.timeIntervalSince(p.timestamp)
-                LineMark(x: .value("t", dt), y: .value("ms", p.ms))
-                    .foregroundStyle(.green)
-                PointMark(x: .value("t", dt), y: .value("ms", p.ms))
-                    .foregroundStyle(.green)
-                    .symbolSize(14)
+                // Vertical bar per discrete translation event — no
+                // interpolation across time gaps.
+                BarMark(
+                    x: .value("t", dt),
+                    yStart: .value("base", 0),
+                    yEnd:   .value("ms", min(Double(p.ms), yMax)),
+                    width:  .fixed(3)
+                )
+                .foregroundStyle(p.ms > Int(yMax) ? .red : .green)
+                .cornerRadius(1)
             }
             .chartXScale(domain: -window...0)
             .chartXAxis { secondsAxis }
+            .chartYScale(domain: 0...yMax)
             .chartYAxis { msYAxis }
         }
     }
