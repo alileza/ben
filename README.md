@@ -26,6 +26,10 @@ cd ben
 open Ben.app
 ```
 
+> `build.sh` produces an ad-hoc-signed bundle for local dev. For a release
+> that other people can open without right-click→Open gymnastics, see
+> [`release.sh`](./release.sh).
+
 First launch will ask for **Microphone** and **Speech Recognition**
 permission, and (on first use of a language pair) prompt to download the
 on-device translation model.
