@@ -42,16 +42,21 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                DirectionToggle(direction: state.direction, onChange: applyDirection)
+                DirectionToggle(direction: state.direction) { newDir in
+                    applyDirection(newDir)
+                }
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 ExportMenuButton(state: state)
                 InputSourceButton(state: state,
-                                  devices: devices,
-                                  onInputDeviceChanged: applyInputDevice)
-                Button(state.isListening ? "Stop" : "Start", action: toggleMic)
-                    .keyboardShortcut(.space, modifiers: [])
-                    .accessibilityLabel(state.isListening ? "Stop microphone" : "Start microphone")
+                                  devices: devices) { id in
+                    applyInputDevice(id)
+                }
+                Button(state.isListening ? "Stop" : "Start") {
+                    toggleMic()
+                }
+                .keyboardShortcut(.space, modifiers: [])
+                .accessibilityLabel(state.isListening ? "Stop microphone" : "Start microphone")
             }
         }
         .translationTask(translationConfig) { session in
@@ -229,7 +234,7 @@ struct ContentView: View {
 
     // MARK: - User actions
 
-    private func toggleMic() {
+    @MainActor private func toggleMic() {
         if state.isListening {
             state.isListening = false
             state.runId &+= 1
@@ -251,14 +256,14 @@ struct ContentView: View {
         }
     }
 
-    private func applyInputDevice(_ id: AudioDeviceID?) {
+    @MainActor private func applyInputDevice(_ id: AudioDeviceID?) {
         state.selectedInputDeviceID = id
         let name = devices.inputs.first(where: { $0.id == id })?.name ?? "default"
         logInfo("input device: \(name)")
         if state.isListening { state.runId &+= 1 }
     }
 
-    private func applyDirection(_ new: Direction) {
+    @MainActor private func applyDirection(_ new: Direction) {
         state.direction = new
         translationConfig = .init(
             source: .init(identifier: new.sourceCode),

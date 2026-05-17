@@ -13,7 +13,8 @@ struct DirectionToggle: View {
 
     var body: some View {
         Button {
-            onChange(direction.opposite)
+            let next = direction.opposite
+            onChange(next)
         } label: {
             HStack(spacing: 6) {
                 Text(direction.label)
