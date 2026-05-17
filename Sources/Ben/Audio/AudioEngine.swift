@@ -1,12 +1,12 @@
 import AVFoundation
 import CoreAudio
 
-/// Captures mic audio at the hardware format. Each `start()` returns fresh
-/// AsyncStreams; `stop()` finishes them and tears the engine down.
-///
-/// Format conversion is intentionally absent — SFSpeechRecognizer converts
-/// internally, and doing it here was producing buffers the recognizer
-/// silently rejected. Always feed raw mic buffers downstream.
+/// Captures mic audio and republishes it as mono Float32 buffers (extracted
+/// from channel 0 of the hardware format) — SFSpeechRecognizer expects mono
+/// or stereo and silently drops everything when handed a multi-channel
+/// buffer from an aggregate device. The sample rate is left at the
+/// hardware rate (typically 44.1/48 kHz); the recognizer down-samples
+/// internally.
 final class AudioEngine: @unchecked Sendable {
 
     typealias BufferStream = AsyncStream<AVAudioPCMBuffer>
@@ -20,20 +20,15 @@ final class AudioEngine: @unchecked Sendable {
     func start(deviceID: AudioDeviceID? = nil) throws -> (buffers: BufferStream, levels: LevelStream) {
         stop()
 
-        let (buffers, bCont) = BufferStream.makeStream(
-            bufferingPolicy: .bufferingOldest(16)
-        )
-        let (levels, lCont) = LevelStream.makeStream(
-            bufferingPolicy: .bufferingOldest(16)
-        )
+        let (buffers, bCont) = BufferStream.makeStream(bufferingPolicy: .bufferingOldest(16))
+        let (levels,  lCont) = LevelStream.makeStream(bufferingPolicy: .bufferingOldest(16))
         bufferContinuation = bCont
         levelContinuation  = lCont
 
         let input = engine.inputNode
 
-        // Select a specific input device if requested. Must happen before any
-        // tap is installed or the engine starts — AVAudioEngine caches the
-        // format from the input device at start time.
+        // Pin to a specific input device before tapping. AVAudioEngine caches
+        // the input format at engine.start() time.
         if let deviceID, deviceID != 0 {
             do {
                 try input.auAudioUnit.setDeviceID(deviceID)
@@ -43,14 +38,48 @@ final class AudioEngine: @unchecked Sendable {
             }
         }
 
-        let format = input.outputFormat(forBus: 0)
-        logInfo("audio: tap installed @ \(Int(format.sampleRate)) Hz, channels=\(format.channelCount)")
+        let hwFormat = input.outputFormat(forBus: 0)
+        logInfo("audio: tap installed @ \(Int(hwFormat.sampleRate)) Hz, hw channels=\(hwFormat.channelCount)")
 
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { buf, _ in
-            bCont.yield(buf)
-            guard let ch = buf.floatChannelData?[0] else { return }
+        // Force a mono target format (Float32 at the hardware sample rate).
+        // SFSpeechRecognizer accepts 1- or 2-channel buffers; multi-channel
+        // virtual devices (aggregate, BlackHole, etc.) silently produce no
+        // transcripts, so we always downmix here.
+        let monoFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate:   hwFormat.sampleRate,
+            channels:     1,
+            interleaved:  false
+        )!
+        let converter = AVAudioConverter(from: hwFormat, to: monoFormat)
+
+        input.installTap(onBus: 0, bufferSize: 4096, format: hwFormat) { buf, _ in
+            // Convert to mono. If the format is already mono, the converter
+            // passes through; we still hand the recognizer a fresh buffer
+            // that matches `monoFormat` exactly.
+            let outCapacity = AVAudioFrameCount(
+                Double(buf.frameLength) * monoFormat.sampleRate / hwFormat.sampleRate
+            )
+            guard let monoBuf = AVAudioPCMBuffer(pcmFormat: monoFormat,
+                                                 frameCapacity: max(outCapacity, buf.frameLength)),
+                  let converter = converter else { return }
+
+            var fed = false
+            var err: NSError?
+            converter.convert(to: monoBuf, error: &err) { _, status in
+                if fed { status.pointee = .noDataNow; return nil }
+                fed = true
+                status.pointee = .haveData
+                return buf
+            }
+            if err != nil { return }
+
+            bCont.yield(monoBuf)
+
+            // Peak level off the resulting mono buffer.
+            guard let ch = monoBuf.floatChannelData?[0] else { return }
             var peak: Float = 0
-            for i in 0..<Int(buf.frameLength) {
+            for i in 0..<Int(monoBuf.frameLength) {
                 let v = abs(ch[i])
                 if v > peak { peak = v }
             }
