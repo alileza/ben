@@ -13,7 +13,11 @@ no API keys, no model downloads from this app, no network round-trips.
 
 ---
 
-## Quick start
+## Download
+
+Pre-built DMGs are attached to each [GitHub Release](https://github.com/alileza/ben/releases). Open the DMG, drag **Ben.app** to **Applications**, then **right-click → Open** the first time so macOS lets the ad-hoc-signed bundle launch.
+
+## Build from source
 
 ```bash
 git clone git@github.com:alileza/ben.git

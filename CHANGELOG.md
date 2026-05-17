@@ -12,9 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Speech/`, `Views/`, etc.)
 - MIT LICENSE, CONTRIBUTING, CODE_OF_CONDUCT
 - GitHub Actions CI that builds the `.app` on push and PR
+- **Release workflow**: tagging `v*` (e.g. `v0.1.0`) builds the `.app`,
+  wraps it in a DMG via `hdiutil`, generates a SHA-256, and publishes a
+  GitHub Release with install instructions
 - Issue and PR templates
 - Empty-state hint in the transcript view when there are no committed
   utterances yet
+- GitHub Pages landing at <https://alileza.github.io/ben/>
 
 ## [0.1.0] - 2026-05-16
 
