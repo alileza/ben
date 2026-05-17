@@ -30,7 +30,7 @@ final class AppState {
     // MARK: - UI toggles (driven from the View menu)
 
     var showDebug: Bool = false
-    var showDiagnostics: Bool = false
+    var showDiagnostics: Bool = true
 
     // MARK: - Audio input
 
