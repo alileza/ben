@@ -3,8 +3,8 @@ import SwiftUI
 /// Source/translation in a SINGLE shared scroll. Each committed row is one
 /// `HStack` containing both columns, so the two sides are always aligned
 /// vertically — a taller source forces the translation column to expand to
-/// match (and vice versa). The active in-progress row uses the same
-/// two-column structure and sits pinned at the top under the status bar.
+/// match. The active in-progress row uses the same two-column structure and
+/// sits pinned at the top under the status bar.
 struct TranscriptView: View {
     let state: AppState
 
@@ -15,7 +15,7 @@ struct TranscriptView: View {
             historyScroll
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(white: 0.07))
+        .background(Color(NSColor.controlBackgroundColor))
     }
 
     // MARK: - Active
@@ -32,7 +32,7 @@ struct TranscriptView: View {
                        accent: .green,
                        speaker: "S\(state.speakerId)")
         }
-        .background(Color(white: 0.11))
+        .background(.regularMaterial)
     }
 
     // MARK: - History
@@ -47,6 +47,10 @@ struct TranscriptView: View {
                         ForEach(Array(state.pairedLines.reversed())) { row in
                             PairedRowView(row: row, sessionStart: state.sessionStart)
                                 .id(row.id)
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: .top).combined(with: .opacity),
+                                    removal: .opacity
+                                ))
                         }
                     }
                     .padding(.vertical, 8)
@@ -72,19 +76,20 @@ struct TranscriptView: View {
                 .foregroundStyle(.tertiary)
             Text(state.isListening
                  ? "Listening — speak to get started"
-                 : "Click \"start mic\" or press space to begin")
-                .font(.system(size: 12))
+                 : "Press Space or click Start to begin")
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .padding(.vertical, 60)
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
     private var verticalDivider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.08))
+            .fill(Color.primary.opacity(0.08))
             .frame(width: 1)
     }
 }
@@ -92,7 +97,7 @@ struct TranscriptView: View {
 // MARK: - Row
 
 /// A single committed utterance. Hovering grows the text to the active size
-/// on both sides simultaneously (synced via `hovered` in this struct).
+/// on both sides simultaneously via the shared `hovered` state.
 struct PairedRowView: View {
     let row: PairedRow
     let sessionStart: Date
@@ -112,7 +117,7 @@ struct PairedRowView: View {
                         text: row.source,
                         hovered: hovered)
             Rectangle()
-                .fill(Color.white.opacity(hovered ? 0.10 : 0.06))
+                .fill(Color.primary.opacity(hovered ? 0.10 : 0.06))
                 .frame(width: 1)
             HistoryCell(stamp: stamp,
                         speaker: row.speaker,
@@ -121,10 +126,13 @@ struct PairedRowView: View {
                         text: row.translation,
                         hovered: hovered)
         }
-        .background(hovered ? Color.white.opacity(0.04) : .clear)
+        .background(hovered ? Color.primary.opacity(0.04) : .clear)
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.15), value: hovered)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(stamp), \(row.speaker)")
+        .accessibilityValue("Source \(row.sourceLang): \(row.source). Translation \(row.targetLang): \(row.translation).")
     }
 }
 
@@ -144,10 +152,9 @@ private struct HistoryCell: View {
                 Text(speaker).foregroundStyle(.orange)
                 Spacer(minLength: 0)
             }
-            .font(.system(size: 10, design: .monospaced))
+            .font(.caption2.monospaced())
             Text(text.isEmpty ? "—" : text)
-                .font(.system(size: hovered ? 16 : 13,
-                              weight: hovered ? .medium : .regular))
+                .font(hovered ? .body.weight(.medium) : .body)
                 .foregroundStyle(text.isEmpty ? .tertiary
                                               : (hovered ? .primary : .secondary))
                 .textSelection(.enabled)
@@ -170,22 +177,22 @@ private struct ActiveCell: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(text.isEmpty ? Color.gray.opacity(0.4)
+                    .fill(text.isEmpty ? Color.secondary.opacity(0.4)
                                        : Color.red.opacity(0.85))
                     .frame(width: 6, height: 6)
                 Text(lang)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(accent)
                 Text(speaker)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(.orange)
                 Text(text.isEmpty ? "waiting" : "active")
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             }
             Text(text.isEmpty ? "—" : text)
-                .font(.system(size: 16, weight: .medium))
+                .font(.title3.weight(.medium))
                 .foregroundStyle(text.isEmpty ? .tertiary : .primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -194,5 +201,8 @@ private struct ActiveCell: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: 56, alignment: .topLeading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(text.isEmpty ? "Waiting" : "Active") \(lang), \(speaker)")
+        .accessibilityValue(text)
     }
 }

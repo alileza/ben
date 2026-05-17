@@ -10,29 +10,28 @@ struct DebugPane: View {
             header
             entries
         }
-        .background(Color(white: 0.04))
+        .background(.regularMaterial)
         .overlay(alignment: .top) { Divider() }
     }
 
     private var header: some View {
         HStack {
             Text("DEBUG · last \(log.entries.count) events")
-                .font(.system(size: 10, weight: .medium))
+                .font(.caption2.weight(.semibold))
                 .kerning(0.8)
-                .textCase(.uppercase)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("clear") { log.clear() }
+            Button("Clear") { log.clear() }
                 .controlSize(.mini)
                 .buttonStyle(.bordered)
             Text(#"tail: log stream --predicate 'subsystem == "com.local.ben"'"#)
-                .font(.system(size: 10, design: .monospaced))
+                .font(.caption2.monospaced())
                 .foregroundStyle(.tertiary)
                 .textSelection(.enabled)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
-        .background(Color(white: 0.10))
+        .background(.thinMaterial)
         .overlay(alignment: .bottom) { Divider() }
     }
 
@@ -82,6 +81,9 @@ private struct DebugRow: View {
                 .textSelection(.enabled)
             Spacer(minLength: 0)
         }
-        .font(.system(size: 11, design: .monospaced))
+        .font(.caption.monospaced())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(entry.level.rawValue.capitalized) log")
+        .accessibilityValue(entry.message)
     }
 }

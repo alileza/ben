@@ -9,7 +9,7 @@ import CoreAudio
 ///
 ///   - `.translationTask(_:perform:)` activates a `TranslationSession` whose
 ///     body owns a request/response queue bound to `AppState`. Restarted
-///     automatically by SwiftUI whenever `translationConfig` changes.
+///     automatically whenever `translationConfig` changes.
 ///
 ///   - `.task(id: state.runId)` runs the audio + speech pipeline. Toggling
 ///     mic, changing input device, or changing direction increments `runId`
@@ -24,17 +24,14 @@ struct ContentView: View {
     @State private var silenceWatchdog: Task<Void, Never>?
     @State private var utteranceStartedAt: Date?
 
-    private let utteranceSilenceSeconds: TimeInterval = 1.0
-    private let utteranceSoftLimit:     TimeInterval = 5.0
-    private let utteranceHardLimit:     TimeInterval = 10.0
+    // Persisted preferences (Settings → Audio).
+    @AppStorage("silenceThreshold") private var silenceThresholdSeconds: Double = 1.0
+    @AppStorage("softChunkLimit")   private var softChunkLimitSeconds:   Double = 5.0
+    @AppStorage("hardChunkLimit")   private var hardChunkLimitSeconds:   Double = 10.0
 
     var body: some View {
         VStack(spacing: 0) {
-            StatusBar(state: state,
-                      devices: devices,
-                      onToggleMic: toggleMic,
-                      onDirectionChanged: applyDirection,
-                      onInputDeviceChanged: applyInputDevice)
+            StatusStrip(state: state)
             TranscriptView(state: state)
             if state.showDiagnostics {
                 DiagnosticsPane(state: state).frame(height: 160)
@@ -43,7 +40,20 @@ struct ContentView: View {
                 DebugPane().frame(height: 200)
             }
         }
-        .background(Color(white: 0.05))
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                DirectionToggle(direction: state.direction, onChange: applyDirection)
+            }
+            ToolbarItemGroup(placement: .primaryAction) {
+                ExportMenuButton(state: state)
+                InputSourceButton(state: state,
+                                  devices: devices,
+                                  onInputDeviceChanged: applyInputDevice)
+                Button(state.isListening ? "Stop" : "Start", action: toggleMic)
+                    .keyboardShortcut(.space, modifiers: [])
+                    .accessibilityLabel(state.isListening ? "Stop microphone" : "Start microphone")
+            }
+        }
         .translationTask(translationConfig) { session in
             await runTranslator(session: session)
         }
@@ -71,9 +81,6 @@ struct ContentView: View {
             return
         }
 
-        // Fresh queue per activation. Bound to AppState so the speech handler
-        // can post into the *current* translator regardless of how many times
-        // direction has changed.
         let (stream, cont) = AsyncStream<AppState.TranslateRequest>.makeStream()
         state.bindTranslator(cont)
         defer { cont.finish() }
@@ -152,7 +159,6 @@ struct ContentView: View {
     }
 
     private func handleTranscript(_ t: Transcript) {
-        // Track utterance start for the soft/hard chunking caps.
         if state.activeSource.isEmpty && !t.text.isEmpty {
             utteranceStartedAt = .now
         }
@@ -163,8 +169,6 @@ struct ContentView: View {
             silenceWatchdog?.cancel()
             utteranceStartedAt = nil
             let finalText = t.text
-            // Get the canonical translation of the EXACT final text before
-            // committing so the row's source and translation always match.
             Task { @MainActor in
                 let translation = await state.translateCanonical(finalText)
                 commitUtterance(source: finalText, translation: translation)
@@ -177,29 +181,24 @@ struct ContentView: View {
 
     // MARK: - Chunking
 
-    /// SFSpeechRecognizer rarely fires `isFinal` on its own in continuous
-    /// mode. We force one by calling `endUtterance()` after a quiet period,
-    /// which is what the user perceives as "a pause = a new line".
     private func armSilenceWatchdog() {
         silenceWatchdog?.cancel()
+        let delay = silenceThresholdSeconds
         silenceWatchdog = Task { @MainActor [speech] in
-            try? await Task.sleep(for: .seconds(utteranceSilenceSeconds))
+            try? await Task.sleep(for: .seconds(delay))
             if Task.isCancelled { return }
             guard !state.activeSource.isEmpty else { return }
             speech.endUtterance()
         }
     }
 
-    /// Long-utterance cap. After the soft limit, chunk on the next word
-    /// boundary; after the hard limit, chunk regardless. Avoids breaking
-    /// mid-word in the common case.
     private func maybeForceChunk(currentText: String) {
         guard let started = utteranceStartedAt else { return }
         let elapsed = Date().timeIntervalSince(started)
-        if elapsed < utteranceSoftLimit { return }
+        if elapsed < softChunkLimitSeconds { return }
 
         let atBoundary = endsAtWordBoundary(currentText)
-        if (elapsed >= utteranceSoftLimit && atBoundary) || elapsed >= utteranceHardLimit {
+        if (elapsed >= softChunkLimitSeconds && atBoundary) || elapsed >= hardChunkLimitSeconds {
             logInfo("chunk: forcing after \(Int(elapsed))s (boundary=\(atBoundary))")
             speech.endUtterance()
         }
@@ -214,14 +213,16 @@ struct ContentView: View {
 
     private func commitUtterance(source: String, translation: String) {
         guard !source.isEmpty else { return }
-        state.pairedLines.append(PairedRow(
-            timestamp: Date(),
-            speaker: "S\(state.speakerId)",
-            sourceLang: state.direction.sourceCode,
-            source: source,
-            targetLang: state.direction.targetCode,
-            translation: translation
-        ))
+        withAnimation(.easeOut(duration: 0.22)) {
+            state.pairedLines.append(PairedRow(
+                timestamp: Date(),
+                speaker: "S\(state.speakerId)",
+                sourceLang: state.direction.sourceCode,
+                source: source,
+                targetLang: state.direction.targetCode,
+                translation: translation
+            ))
+        }
         state.activeSource = ""
         state.activeTranslation = ""
     }
@@ -279,5 +280,49 @@ struct ContentView: View {
         case .authorized:    return "ok"
         @unknown default:    return "unknown"
         }
+    }
+}
+
+// MARK: - Status strip (slim row of ambient state below the toolbar)
+
+/// Thin status bar below the toolbar. Ambient indicators only — no controls.
+private struct StatusStrip: View {
+    let state: AppState
+
+    var body: some View {
+        HStack(spacing: 18) {
+            stateIndicator
+            micIndicator
+            Spacer()
+        }
+        .font(.caption.monospaced())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(.thinMaterial)
+        .overlay(alignment: .bottom) { Divider() }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var stateIndicator: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(state.isListening ? Color.green : Color.secondary.opacity(0.5))
+                .frame(width: 6, height: 6)
+            Text(state.status)
+                .foregroundStyle(state.isListening ? .primary : .secondary)
+        }
+        .accessibilityLabel("State")
+        .accessibilityValue(state.status)
+    }
+
+    private var micIndicator: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "mic.fill").imageScale(.small)
+            Text(String(format: "%.2f", state.micLevel))
+                .monospacedDigit()
+        }
+        .foregroundStyle(state.micLevel > 0.02 ? .green : .secondary)
+        .accessibilityLabel("Microphone level")
+        .accessibilityValue(String(format: "%.2f", state.micLevel))
     }
 }

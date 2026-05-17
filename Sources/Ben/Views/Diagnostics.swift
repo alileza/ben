@@ -14,7 +14,7 @@ struct DiagnosticsPane: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        .background(Color(white: 0.04))
+        .background(.regularMaterial)
         .overlay(alignment: .top) { Divider() }
     }
 }
@@ -23,15 +23,14 @@ private struct DiagnosticsHeader: View {
     var body: some View {
         HStack {
             Text("DIAGNOSTICS · last 30 s")
-                .font(.system(size: 10, weight: .medium))
+                .font(.caption2.weight(.semibold))
                 .kerning(0.8)
-                .textCase(.uppercase)
                 .foregroundStyle(.secondary)
             Spacer()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
-        .background(Color(white: 0.10))
+        .background(.thinMaterial)
         .overlay(alignment: .bottom) { Divider() }
     }
 }
@@ -45,19 +44,25 @@ private struct MicCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("mic peak (0–1)")
-                    .font(.system(size: 11))
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(String(format: "%.3f", state.micLevel))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(state.micLevel > 0.02 ? .green : .secondary)
             }
             MicBar(level: state.micLevel)
             MicChart(state: state)
                 .frame(height: 72)
-                .background(Color.black.opacity(0.4), in: RoundedRectangle(cornerRadius: 4))
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.primary.opacity(0.04))
+                )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Microphone peak level")
+        .accessibilityValue(String(format: "%.3f of 1.0", state.micLevel))
     }
 }
 
@@ -67,7 +72,7 @@ private struct MicBar: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.06))
+                Capsule().fill(Color.primary.opacity(0.08))
                 Capsule()
                     .fill(barColor)
                     .frame(width: max(2, geo.size.width * CGFloat(min(1, level * 3))))
@@ -106,11 +111,11 @@ private struct MicChart: View {
 
     private var secondsAxis: some AxisContent {
         AxisMarks(values: [-30, -20, -10, 0]) { v in
-            AxisGridLine().foregroundStyle(.white.opacity(0.05))
+            AxisGridLine().foregroundStyle(Color.primary.opacity(0.06))
             AxisValueLabel {
                 if let s = v.as(Double.self) {
                     Text(s == 0 ? "now" : "\(Int(s)) s")
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(.caption2.monospaced())
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -119,11 +124,11 @@ private struct MicChart: View {
 
     private var micYAxis: some AxisContent {
         AxisMarks(position: .leading, values: [0, 0.25, 0.5]) { v in
-            AxisGridLine().foregroundStyle(.white.opacity(0.05))
+            AxisGridLine().foregroundStyle(Color.primary.opacity(0.06))
             AxisValueLabel {
                 if let d = v.as(Double.self) {
                     Text(String(format: "%.2f", d))
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(.caption2.monospaced())
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -140,18 +145,23 @@ private struct LatencyCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("translation latency (ms)")
-                    .font(.system(size: 11))
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(label)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.primary)
+                    .font(.caption.monospacedDigit())
             }
             LatencyChart(state: state)
                 .frame(height: 92)
-                .background(Color.black.opacity(0.4), in: RoundedRectangle(cornerRadius: 4))
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.primary.opacity(0.04))
+                )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Translation latency")
+        .accessibilityValue(label)
     }
 
     private var label: String {
@@ -182,11 +192,11 @@ private struct LatencyChart: View {
 
     private var secondsAxis: some AxisContent {
         AxisMarks(values: [-30, -20, -10, 0]) { v in
-            AxisGridLine().foregroundStyle(.white.opacity(0.05))
+            AxisGridLine().foregroundStyle(Color.primary.opacity(0.06))
             AxisValueLabel {
                 if let s = v.as(Double.self) {
                     Text(s == 0 ? "now" : "\(Int(s)) s")
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(.caption2.monospaced())
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -195,11 +205,11 @@ private struct LatencyChart: View {
 
     private var msYAxis: some AxisContent {
         AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
-            AxisGridLine().foregroundStyle(.white.opacity(0.05))
+            AxisGridLine().foregroundStyle(Color.primary.opacity(0.06))
             AxisValueLabel {
                 if let ms = v.as(Int.self) {
                     Text("\(ms)")
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(.caption2.monospaced())
                         .foregroundStyle(.tertiary)
                 }
             }

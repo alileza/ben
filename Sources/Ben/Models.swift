@@ -1,4 +1,26 @@
 import Foundation
+import SwiftUI
+
+/// User appearance preference. Persisted via `@AppStorage("appearance")` and
+/// applied to the root view's `.preferredColorScheme`.
+enum AppearancePreference: String, CaseIterable, Identifiable, Sendable {
+    case system, light, dark
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .system: "Match System"
+        case .light:  "Light"
+        case .dark:   "Dark"
+        }
+    }
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light:  .light
+        case .dark:   .dark
+        }
+    }
+}
 
 /// Translation direction. SFSpeechRecognizer locale and the Translation
 /// framework source/target locales are all derived from this single enum.
