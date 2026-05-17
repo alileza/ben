@@ -24,13 +24,37 @@ struct BenApp: App {
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
         .commands {
+            AppInfoCommands()
             FileMenuCommands(state: appState)
             ViewMenuCommands(state: appState)
             HelpMenuCommands()
         }
 
+        Window("About Ben", id: "about") {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.center)
+
         Settings {
             SettingsView()
+        }
+    }
+}
+
+// MARK: - About menu item
+
+/// Replaces the default "About Ben" menu item so it opens our custom window
+/// instead of the system-generated panel.
+struct AppInfoCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About Ben") {
+                openWindow(id: "about")
+            }
         }
     }
 }
