@@ -76,14 +76,17 @@ final class AudioEngine: @unchecked Sendable {
 
             bCont.yield(monoBuf)
 
-            // Peak level off the resulting mono buffer.
+            // Peak level off the resulting mono buffer, clamped to [0, 1].
+            // AVAudioConverter's default downmix matrix sometimes produces
+            // samples briefly above 1.0 (e.g. when summing correlated
+            // channels); clamping avoids chart-axis overflow downstream.
             guard let ch = monoBuf.floatChannelData?[0] else { return }
             var peak: Float = 0
             for i in 0..<Int(monoBuf.frameLength) {
                 let v = abs(ch[i])
                 if v > peak { peak = v }
             }
-            lCont.yield(peak)
+            lCont.yield(min(peak, 1.0))
         }
 
         engine.prepare()

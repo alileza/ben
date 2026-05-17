@@ -95,9 +95,12 @@ private struct MicChart: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
             Chart(state.micPoints) { p in
+                // Clamp at the display layer too so the line never escapes
+                // its chart frame even if upstream feeds an out-of-range
+                // value momentarily.
                 LineMark(
                     x: .value("t", -ctx.date.timeIntervalSince(p.timestamp)),
-                    y: .value("level", Double(p.level))
+                    y: .value("level", min(Double(p.level), 0.5))
                 )
                 .foregroundStyle(.blue)
                 .interpolationMethod(.linear)
@@ -106,6 +109,7 @@ private struct MicChart: View {
             .chartXAxis { secondsAxis }
             .chartYScale(domain: 0...0.5)
             .chartYAxis { micYAxis }
+            .clipped()
         }
     }
 
